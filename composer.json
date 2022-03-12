@@ -1,0 +1,49 @@
+{
+    "name": "fournodes/import-operation",
+    "description": "Adds import operation to Laravel Backpack",
+    "license": "GPL-3.0",
+    "authors": [
+        {
+            "name": "Fournodes LLC",
+            "email": "contact@four-nodes.com",
+            "homepage": "https://four-nodes.com"
+        }
+    ],
+    "homepage": "https://github.com/fournodes/import-operation",
+    "keywords": [
+        "Laravel",
+        "Backpack",
+        "Backpack for Laravel",
+        "Backpack Addon",
+        "Backpack Import",
+        "Import Operation"
+    ],
+    "require": {
+        "illuminate/support": "~7|~8",
+        "backpack/crud": "^4.1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "~9.0",
+        "orchestra/testbench": "~5|~6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Fournodes\\ImportOperation\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Fournodes\\ImportOperation\\Tests\\": "tests"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit --testdox"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Fournodes\\ImportOperation\\AddonServiceProvider"
+            ]
+        }
+    }
+}

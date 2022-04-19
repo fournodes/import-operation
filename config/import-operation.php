@@ -37,5 +37,6 @@ return [
     'import_batch_table_name'   => 'import_operation_batches',
     'import_mapping_table_name' => 'import_operation_mappings',
 
-    'preview_row_count' => 10,
+    'preview_row_limit' => 10,
+    'error_row_limit'   => 20,
 ];

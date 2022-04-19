@@ -15,7 +15,7 @@
             <div class="card-body">
                 <form class="form-horizontal" method="POST" action="{{ url($crud->route . '/import/process') }}" novalidate>
                     {{ csrf_field() }}
-                    <input type="hidden" name="batch_id" value="{{ $batch_id }}" />
+                    <input type="hidden" name="import_batch_id" value="{{ $importBatch->id }}" />
                     @if ($selectedMapping['id'])
                         <input type="hidden" name="mapping_id" value="{{ $selectedMapping['id'] }}" />
                         <input type="hidden" name="mapping_name" value="{{ $selectedMapping['name'] }}" />
@@ -27,34 +27,41 @@
                                 <tr>
                                     @foreach ($selectedMapping['mapping'] as $map)
                                         <th>
-                                            {{ ucfirst($map) }}
+                                            {{ $map ? $mappingLabels[$map]['label'] : '' }}
                                             <input type="hidden" name="mapping[]" value="{{ $map }}" />
                                         </th>
                                     @endforeach
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach ($data as $rowIndex => $row)
-                                    @if (isset($errors[$rowIndex]))
+                                @foreach ($errorRows as $rowIndex => $errorRow)
+                                    @if (isset($errorMessages[$rowIndex]))
                                         <tr>
-                                            @foreach ($row as $key => $value)
+                                            @foreach ($errorRow as $columnIndex => $columnValue)
                                                 <td class="text-truncate">
-                                                    @if (isset($errors[$rowIndex][$selectedMapping['mapping'][$key]]))
-                                                        <input type="text" name="data[{{ $rowIndex }}][{{ $key }}]" value="{{ $value }}" class="form-control is-invalid" />
+                                                    @if (isset($errorMessages[$rowIndex][$selectedMapping['mapping'][$columnIndex]]))
+                                                        <input type="text" name="error_rows[{{ $rowIndex }}][{{ $columnIndex }}]" value="{{ $columnValue }}" class="form-control is-invalid" />
                                                         <div class="invalid-feedback">
-                                                            @foreach ($errors[$rowIndex][$selectedMapping['mapping'][$key]] as $error)
+                                                            @foreach ($errorMessages[$rowIndex][$selectedMapping['mapping'][$columnIndex]] as $error)
                                                                 {{ $error }}
                                                             @endforeach
                                                         </div>
                                                     @else
-                                                        {{ $value }}
-                                                        <input type="hidden" name="data[{{ $rowIndex }}][{{ $key }}]" value="{{ $value }}" />
+                                                        {{ $columnValue }}
+                                                        <input type="hidden" name="error_rows[{{ $rowIndex }}][{{ $columnIndex }}]" value="{{ $columnValue }}" />
                                                     @endif
                                                 </td>
                                             @endforeach
                                         </tr>
                                     @endif
                                 @endforeach
+                                @if ($moreErrors)
+                                    <tr>
+                                        <td colspan="100%" class="bg-light font-weight-bold text-danger">
+                                            {{ trans('fournodes.import-operation::import-operation.more_error', ['count' => count($errorRows)]) }}
+                                        </td>
+                                    </tr>
+                                @endif
                             </tbody>
 
                         </table>

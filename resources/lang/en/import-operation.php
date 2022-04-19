@@ -18,5 +18,8 @@ return [
     'headers_field_label' => 'File contains header?',
 
     'import_success'    => 'Successfully imported :count record(s).',
-    'import_error'      => 'There is a problem with :count record(s).',
+    'import_error'      => 'Showing :count record(s) that have errors',
+    'more_error'        => 'Showing :count error(s). There maybe more',
+
+    'mapping_required' => 'Atleast one column mapping is required',
 ];

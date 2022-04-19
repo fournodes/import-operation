@@ -17,7 +17,7 @@ class CreateImportBatchesTable extends Migration
             $table->id();
             $table->text('defaults')->default(null)->nullable();
             $table->text('path')->default(null);
-            $table->boolean('headers')->default(false);
+            $table->text('headers')->default(null);
             $table->timestamps();
         });
     }

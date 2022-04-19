@@ -20,7 +20,7 @@ class ImportBatch extends Model
     protected $casts = [
         'defaults' => 'array',
         'path'     => 'string',
-        'headers'  => 'boolean',
+        'headers'  => 'array',
     ];
 
     /**

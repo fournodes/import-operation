@@ -12,9 +12,9 @@
     <div class="row mt-4">
         <div class="card">
             <div class="card-body">
-                <form class="form-horizontal" method="POST" action="{{ url($crud->route . '/import/process') }}">
+                <form class="form-horizontal" method="POST" action="{{ url($crud->route . '/import/process') }}" onsubmit="return checkIfMappingIsSelected()">
                     {{ csrf_field() }}
-                    <input type="hidden" name="batch_id" value="{{ $batch->id }}" />
+                    <input type="hidden" name="import_batch_id" value="{{ $importBatch->id }}" />
                     <div class="row">
                         <div class="col-md-12 mb-3">
                             <div class="input-group mapping-group d-none">
@@ -46,9 +46,9 @@
                         <table class="table table-bordered table-striped table-hover">
                             <thead>
                                 <tr>
-                                    @for ($i = 0; $i < count($rows[0]); $i++)
+                                    @for ($i = 1; $i <= count($rows[0]); $i++)
                                         <th>
-                                            <select name="mapping[]" class="form-control">
+                                            <select data-column="{{ $i }}" name="mapping[]" class="form-control">
                                                 <option value=""></option>
                                                 @foreach ($fields as $field)
                                                     <option value="{{ $field['name'] }}">
@@ -59,9 +59,9 @@
                                         </th>
                                     @endfor
                                 </tr>
-                                @if ($headers)
+                                @if ($importBatch->headers)
                                     <tr>
-                                        @foreach ($headers as $key => $value)
+                                        @foreach ($importBatch->headers as $key => $value)
                                             <th>{{ $value }}</th>
                                         @endforeach
                                     </tr>
@@ -79,6 +79,8 @@
 
                         </table>
                     </div>
+
+                    <div class="mt-3" id="table_info"></div>
 
                     <div class="mt-3">
                         <button type="submit" class="btn ml-2 btn-primary">Import Data</button>
@@ -104,13 +106,14 @@
 
 @section('after_scripts')
     <script>
-        $(".toggle-mapping-group").click(() => {
+
+        $(".toggle-mapping-group").on('click', () => {
             $('input[name="mapping_name"]').val('');
             $('select[name="mapping_id"]').val('');
             $(".mapping-group").toggleClass("d-none");
         });
 
-        $('select[name="mapping_id"]').change(function() {
+        $('select[name="mapping_id"]').on('change', function() {
             let selectedOption = $(this).find(':selected');
             let mapping = selectedOption.data('mapping');
 
@@ -118,7 +121,36 @@
 
             $("select[name='mapping[]']").each((i, select) =>
                 $(select).find(`option[value="${mapping[i]}"]`).prop('selected', true)
-            );
+            ).trigger('change');
         });
+
+        $("select[name='mapping[]']").on('change', function () {
+
+            // Add success class to column that are mapps
+            let column = $(this).data('column');
+            $(`table th:nth-child(${column}), table td:nth-child(${column})`).toggleClass('bg-success', $(this).val() != '')
+          
+            // Show how many column have been mapped or not mapped
+            let mappings = $('select[name="mapping[]"]');  
+            let mappingSelected = mappings.find('option[value!=""]:selected');
+            let mappingNotSelected = mappings.find('option[value=""]:selected');
+
+            $('#table_info').html(`${mappingSelected.length} column(s) mapped. ${mappingNotSelected.length} column(s) not mapped.`);
+        });
+
+        let checkIfMappingIsSelected = () => {
+
+            let mappingSelectedCount = $('select[name="mapping[]"] option[value!=""]:selected').length;
+
+            if(mappingSelectedCount > 0)
+                return true;
+            else {
+                new Noty({
+                    type: 'error',
+                    text: '{!! trans('fournodes.import-operation::import-operation.mapping_required') !!}'
+                }).show();
+                return false;
+            }
+        };
     </script>
 @endsection

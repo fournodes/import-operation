@@ -3,11 +3,13 @@
 namespace Fournodes\ImportOperation;
 
 use Alert;
+use Excel;
+use Fournodes\ImportOperation\Imports\FileImport;
 use Fournodes\ImportOperation\Models\ImportBatch;
 use Fournodes\ImportOperation\Models\ImportMapping;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
-use Storage;
+use Str;
 use Validator;
 
 trait ImportOperation
@@ -96,7 +98,7 @@ trait ImportOperation
         // Define validation rules for checking data
         $validationRules = array_merge(
             // Validation rule for import file
-            ['file' => 'required|file|mimes:csv,txt'],
+            ['file' => 'required|file|mimes:xlsx,csv,txt,tsv,ods,xls,slk,xml,gnumeric,html'],
             // Extract validation rules if a validation class was set for this operation
             array_intersect_key($this->importValidationRules(), $fields)
         );
@@ -111,10 +113,17 @@ trait ImportOperation
             return redirect("{$this->crud->route}/import")->withErrors($validator);
         }
 
+        // TODO: handle multiple sheets in a better way
+        $rows = Excel::toArray(new FileImport, $request->file('file'))[0];
+
+        if ($request->has('file_contains_headers')) {
+            $headers = array_shift($rows);
+        }
+
         $importBatch = ImportBatch::create([
             'defaults' => $this->crud->getStrippedSaveRequest(),
-            'path'     => $request->file('file')->store('import'),
-            'headers'  => $request->has('headers'),
+            'path'     => $this->arrayToFile(null, $rows),
+            'headers'  => $headers ?? null,
         ]);
 
         return redirect("{$this->crud->route}/import/map/{$importBatch->id}");
@@ -128,17 +137,16 @@ trait ImportOperation
      */
     public function map(int $importBatchId)
     {
-        $batch = ImportBatch::find($importBatchId);
+        $importBatch = ImportBatch::findOrFail($importBatchId);
 
-        $rows = $this->fileToArray($batch->path);
+        $rows = $this->fileToArray($importBatch->path);
 
         $this->data = [
-            'crud'     => $this->crud,
-            'batch'    => $batch,
-            'headers'  => $batch->headers ? array_shift($rows) : false,
-            'rows'     => array_slice($rows, 0, config('fournodes.import-operation.preview_row_count')),
-            'mappings' => ImportMapping::whereModelType($this->crud->getModel()->getMorphClass())->get(),
-            'fields'   => $this->getFields(),
+            'crud'        => $this->crud,
+            'importBatch' => $importBatch,
+            'rows'        => array_slice($rows, 0, config('fournodes.import-operation.preview_row_limit')),
+            'mappings'    => ImportMapping::whereModelType($this->crud->getModel()->getMorphClass())->get(),
+            'fields'      => $this->getFields(),
         ];
 
         // load the view from /resources/views/vendor/fournodes/import-operation/ if it exists, otherwise load the one in the package
@@ -160,7 +168,7 @@ trait ImportOperation
 
         $importMappingData = [
             'id'         => $request->mapping_id ?? null,
-            'name'       => $request->mapping_name ?? "Untitled Mapping# {$request->batch_id}",
+            'name'       => $request->mapping_name ?? "Untitled Mapping# {$request->import_batch_id}",
             'model_type' => $this->crud->getModel()->getMorphClass(),
             'mapping'    => $request->mapping,
         ];
@@ -175,18 +183,17 @@ trait ImportOperation
         }
 
         // Load batch information.
-        $importBatch     = ImportBatch::find($request->batch_id);
-        $importBatchData = $this->fileToArray($importBatch->path, $importBatch->headers);
+        $importBatch     = ImportBatch::find($request->import_batch_id);
+        $importBatchData = $this->fileToArray($importBatch->path);
 
         // If coming from error view update batch data with updated data
-        if (isset($request->data)) {
-            foreach ($request->data as $key => $row) {
+        if (isset($request->error_rows)) {
+            foreach ($request->error_rows as $key => $row) {
                 $importBatchData[$key] = $row;
             }
 
             $this->arrayToFile($importBatch->path, $importBatchData);
         }
-
         // Create a mapping index lookup array
         $mappingLookup = [];
         foreach ($importMappingData['mapping'] as $key => $value) {
@@ -213,7 +220,11 @@ trait ImportOperation
         }
 
         // Run validations and create.
-        $errors             = [];
+        $errorRows          = [];
+        $errorMessages      = [];
+        $errorRowCount      = 0;
+        $errorRowLimit      = (int) config('fournodes.import-operation.error_row_limit');
+
         $validationRules    = $this->importValidationRules();
         $validationMessages = $this->importValidationMessages();
 
@@ -221,11 +232,17 @@ trait ImportOperation
             $validator = Validator::make($entity, $validationRules, $validationMessages);
 
             if ($validator->fails()) {
-                $errors[$index] = $validator->errors()->toArray();
+                $errorRowCount++;
+                $errorMessages[$index] = $validator->errors()->toArray();
+                $errorRows[$index]     = $importBatchData[$index];
+            }
+
+            if ($errorRowCount >= $errorRowLimit) {
+                break;
             }
         }
 
-        if (empty($errors)) {
+        if ($errorRowCount === 0) {
             // TODO: Add logic to handle what happens when some records are not imported
             $insertCount = $this->crud->model->insertOrIgnore($importData);
 
@@ -234,14 +251,16 @@ trait ImportOperation
             return redirect($this->crud->route);
         } else {
             $this->data = [
-                'batch_id'        => $request->batch_id,
                 'crud'            => $this->crud,
-                'data'            => $importBatchData,
-                'errors'          => $errors,
+                'importBatch'     => $importBatch,
+                'errorRows'       => $errorRows,
+                'errorMessages'   => $errorMessages,
+                'moreErrors'      => $errorRowCount >= $errorRowLimit,
                 'selectedMapping' => $importMappingData,
+                'mappingLabels'   => $this->getFields(),
             ];
 
-            Alert::error(trans('fournodes.import-operation::import-operation.import_error', ['count' => count($errors)]));
+            Alert::error(trans('fournodes.import-operation::import-operation.import_error', ['count' => $errorRowCount]));
 
             return view($this->crud->get('import.parse_error.view') ?? 'fournodes.import-operation::import_parse_error', $this->data);
         }
@@ -302,7 +321,7 @@ trait ImportOperation
                     'disk'   => 'uploads',
                 ],
                 'headers' => [
-                    'name'  => 'headers',
+                    'name'  => 'file_contains_headers',
                     'label' => trans('fournodes.import-operation::import-operation.headers_field_label'),
                     'type'  => 'checkbox',
                 ],
@@ -319,25 +338,25 @@ trait ImportOperation
         return $fields->toArray();
     }
 
-    private function fileToArray($filepath, $skipHeader = false)
+    private function fileToArray($filepath)
     {
-        $data = array_map('str_getcsv', file(storage_path('app/' . $filepath)));
-
-        if ($skipHeader) {
-            array_shift($data);
-        }
+        $data = array_map('str_getcsv', file(storage_path($filepath)));
 
         return $data;
     }
 
-    private function arrayToFile($filepath, $data)
+    private function arrayToFile($filepath = null, $data)
     {
-        $file = fopen(storage_path('app/' . $filepath), 'w');
+        $filepath = $filepath ?? 'app/import/' . Str::uuid()->toString();
+
+        $file = fopen(storage_path($filepath), 'w');
 
         foreach ($data as $line) {
             fputcsv($file, $line);
         }
 
         fclose($file);
+
+        return $filepath;
     }
 }

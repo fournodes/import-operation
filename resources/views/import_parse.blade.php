@@ -48,7 +48,7 @@
                                 <tr>
                                     @for ($i = 1; $i <= count($rows[0]); $i++)
                                         <th>
-                                            <select data-column="{{ $i }}" name="mapping[]" class="form-control">
+                                            <select data-column="{{ $i }}" name="mapping[]" class="form-control" tabindex="{{ $i }}">
                                                 <option value=""></option>
                                                 @foreach ($fields as $field)
                                                     <option value="{{ $field['name'] }}">
@@ -97,7 +97,7 @@
     <style type="text/css">
         table tr th,
         table tr td {
-            min-width: 150px;
+            min-width: 200px;
             max-width: 300px;
         }
 
@@ -154,3 +154,29 @@
         };
     </script>
 @endsection
+
+{{-- FIELD CSS - will be loaded in the after_styles section --}}
+@push('after_styles')
+    <!-- include select2 css-->
+    <link href="{{ asset('packages/select2/dist/css/select2.min.css') }}" rel="stylesheet" type="text/css" />
+    <link href="{{ asset('packages/select2-bootstrap-theme/dist/select2-bootstrap.min.css') }}" rel="stylesheet" type="text/css" />
+@endpush
+
+{{-- FIELD JS - will be loaded in the after_scripts section --}}
+@push('after_scripts')
+    <!-- include select2 js-->
+    <script src="{{ asset('packages/select2/dist/js/select2.full.min.js') }}"></script>
+    @if (app()->getLocale() !== 'en')
+        <script src="{{ asset('packages/select2/dist/js/i18n/' . str_replace('_', '-', app()->getLocale()) . '.js') }}"></script>
+    @endif
+    <script>
+        $.fn.modal.Constructor.prototype.enforceFocus = function() {};
+
+        $('select[name="mapping[]"]').select2({
+            theme: "bootstrap",
+            allowClear: true,
+            placeholder: '',
+            debug: true,
+        });
+    </script>
+@endpush

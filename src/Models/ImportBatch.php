@@ -9,7 +9,7 @@ class ImportBatch extends Model
     protected $fillable = [
         'defaults',
         'path',
-        'headers',
+        'settings',
     ];
 
     /**
@@ -20,7 +20,7 @@ class ImportBatch extends Model
     protected $casts = [
         'defaults' => 'array',
         'path'     => 'string',
-        'headers'  => 'array',
+        'settings' => 'array',
     ];
 
     /**

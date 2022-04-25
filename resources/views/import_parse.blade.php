@@ -11,7 +11,7 @@
 @section('content')
     <div class="row mt-4">
         <div class="card">
-            <div class="card-body">
+            <div class="card-body">                
                 <form class="form-horizontal" method="POST" action="{{ url($crud->route . '/import/process') }}" onsubmit="return checkIfMappingIsSelected()">
                     {{ csrf_field() }}
                     <input type="hidden" name="import_batch_id" value="{{ $importBatch->id }}" />
@@ -24,6 +24,7 @@
                                 <input type="text" name="mapping_name" class="form-control" placeholder="Enter Mapping Name">
                                 <div class="input-group-append">
                                     <button type="button" class="btn btn-default toggle-mapping-group"><i class="la la-times"></i></button>
+                                    <button type="button" class="btn btn-primary" data-toggle="collapse" href="#settings" role="button" aria-expanded="false" aria-controls="settings"><i class="la la-cog"></i></button>
                                 </div>
                             </div>
                             <div class="input-group mapping-group">
@@ -37,6 +38,51 @@
                                 </select>
                                 <div class="input-group-append">
                                     <button type="button" class="btn btn-success toggle-mapping-group"><i class="la la-plus"></i></button>
+                                    <button type="button" class="btn btn-primary" data-toggle="collapse" href="#settings" role="button" aria-expanded="false" aria-controls="settings"><i class="la la-cog"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="settings" class="col-md-12">
+                            <div class="card card-body mb-3">
+                                <div class="row">
+                                    <div class="col-md-6 form-group">
+                                        <label>Sheet</label>
+                                        <select name="sheet" class="form-control">
+                                            <option value="" disabled>Select Sheet</option>
+                                            @foreach ($sheets as $sheetNumber => $sheetName)
+                                                <option value="{{ $sheetNumber }}" {{ $importBatch->settings['sheet'] == $sheetNumber ? 'selected' : '' }}>
+                                                    {{ $sheetName }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2 form-group">
+                                        <label>Headers</label>                                                                        
+                                        <select name="header" class="form-control">
+                                            <option value="0" {{ $importBatch->settings['header'] == 0 ? 'selected' : '' }}>No</option>
+                                            <option value="1" {{ $importBatch->settings['header'] == 1 ? 'selected' : '' }}>Yes</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2 form-group">
+                                        <label>Offset</label>
+                                        <select name="offset" class="form-control">
+                                            @for ($x = 0; $x <= $importBatch->settings['limit']; $x++)
+                                                <option value="{{ $x }}" {{ $importBatch->settings['offset'] == $x ? 'selected' : '' }}>{{ $x }}</option>
+                                            @endfor
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2 form-group">
+                                        <label>Limit</label>
+                                        <select name="limit" class="form-control">
+                                            @php
+                                                $limit = config('fournodes.import-operation.preview_row_limit');
+                                                for ($i=1; $i <= 5; $i++) {
+                                                    $value = $i * $limit;
+                                                    echo "<option value='{$value}' " . ($importBatch->settings['limit'] == $value ? 'selected' : '') . ">{$value}</option>";
+                                                }
+                                            @endphp
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -46,7 +92,7 @@
                         <table class="table table-bordered table-striped table-hover">
                             <thead>
                                 <tr>
-                                    @for ($i = 1; $i <= count($rows[0]); $i++)
+                                    @for ($i = 1; $i <= count($rows[2]); $i++)
                                         <th>
                                             <select data-column="{{ $i }}" name="mapping[]" class="form-control" tabindex="{{ $i }}">
                                                 <option value=""></option>
@@ -59,13 +105,6 @@
                                         </th>
                                     @endfor
                                 </tr>
-                                @if ($importBatch->headers)
-                                    <tr>
-                                        @foreach ($importBatch->headers as $key => $value)
-                                            <th>{{ $value }}</th>
-                                        @endforeach
-                                    </tr>
-                                @endif
                             </thead>
                             <tbody>
                                 @foreach ($rows as $row)
@@ -100,12 +139,15 @@
             min-width: 200px;
             max-width: 300px;
         }
-
     </style>
 @endsection
 
 @section('after_scripts')
     <script>
+
+        $(function() {
+            $('select[name="header"]').trigger('change');
+        });
 
         $(".toggle-mapping-group").on('click', () => {
             $('input[name="mapping_name"]').val('');
@@ -152,6 +194,32 @@
                 return false;
             }
         };
+
+        // Listen for change in settings that refresh the page
+        $('select[name="sheet"], select[name="limit"]').on('change', function() {   
+            window.location.search = new URLSearchParams({
+                sheet: $('select[name="sheet"]').val(),
+                header: $('select[name="header"]').val(),
+                offset: $('select[name="offset"]').val(),
+                limit: $('select[name="limit"]').val(),
+            }).toString();
+        });
+
+        // Listen for change in settings that modify the view
+        $('select[name="header"], select[name="offset"]').on('change', function() {
+            const header = Number.parseInt($('select[name="header"]').val());
+            const offset = Number.parseInt($('select[name="offset"]').val());
+            
+            $('table tbody tr').removeClass('font-weight-bold').show();
+
+            for (let index = 0; index < offset; index++) {
+                $('table tbody tr').eq(index).hide();
+            }
+
+            if(header) {
+                $('table tbody tr').eq(offset).addClass('font-weight-bold');
+            }
+        });
     </script>
 @endsection
 

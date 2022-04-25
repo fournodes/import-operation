@@ -3,17 +3,22 @@
 namespace Fournodes\ImportOperation;
 
 use Alert;
-use Excel;
-use Fournodes\ImportOperation\Imports\FileImport;
+use Box\Spout\Reader\Common\Creator\ReaderEntityFactory;
+use Box\Spout\Reader\ReaderInterface;
+use Box\Spout\Writer\Common\Creator\WriterEntityFactory;
+use Carbon\Carbon;
+use DateTime;
 use Fournodes\ImportOperation\Models\ImportBatch;
 use Fournodes\ImportOperation\Models\ImportMapping;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Str;
 use Validator;
 
 trait ImportOperation
 {
+    protected ReaderInterface $reader;
+
     /**
      * Define which routes are needed for this operation.
      *
@@ -98,7 +103,7 @@ trait ImportOperation
         // Define validation rules for checking data
         $validationRules = array_merge(
             // Validation rule for import file
-            ['file' => 'required|file|mimes:xlsx,csv,txt,tsv,ods,xls,slk,xml,gnumeric,html'],
+            ['file' => 'required|file|mimes:xlsx,csv,txt,ods'],
             // Extract validation rules if a validation class was set for this operation
             array_intersect_key($this->importValidationRules(), $fields)
         );
@@ -113,17 +118,15 @@ trait ImportOperation
             return redirect("{$this->crud->route}/import")->withErrors($validator);
         }
 
-        // TODO: handle multiple sheets in a better way
-        $rows = Excel::toArray(new FileImport, $request->file('file'))[0];
-
-        if ($request->has('file_contains_headers')) {
-            $headers = array_shift($rows);
-        }
-
         $importBatch = ImportBatch::create([
-            'defaults' => $this->crud->getStrippedSaveRequest(),
-            'path'     => $this->arrayToFile(null, $rows),
-            'headers'  => $headers ?? null,
+            'defaults'  => $this->crud->getStrippedSaveRequest(),
+            'path'      => $request->file('file')->store('imports'),
+            'settings'  => [
+                'sheet'   => 1,
+                'header'  => $request->get('file_contains_headers'),
+                'offset'  => 0,
+                'limit'   => config('fournodes.import-operation.preview_row_limit'),
+            ],
         ]);
 
         return redirect("{$this->crud->route}/import/map/{$importBatch->id}");
@@ -137,14 +140,48 @@ trait ImportOperation
      */
     public function map(int $importBatchId)
     {
+        $rows   = [];
+        $sheets = [];
+
         $importBatch = ImportBatch::findOrFail($importBatchId);
 
-        $rows = $this->fileToArray($importBatch->path);
+        if (request()->get('sheet')) {
+            $importBatch->settings = [
+                'sheet'  => request()->get('sheet'),
+                'header' => request()->get('header'),
+                'offset' => request()->get('offset'),
+                'limit'  => request()->get('limit'),
+            ];
+
+            $importBatch->save();
+        }
+
+        $this->initiateFileReader($importBatch->path);
+
+        foreach ($this->reader->getSheetIterator() as $sheetIndex => $sheet) {
+            $sheets[$sheetIndex] = $sheet->getName();
+
+            if ($sheetIndex == $importBatch->settings['sheet']) {
+                foreach ($sheet->getRowIterator() as $rowIndex => $row) {
+                    foreach ($row->toArray() as $cell) {
+                        $rows[$rowIndex][] = $cell instanceof DateTime
+                        ? Carbon::instance($cell)->isoFormat(config('backpack.base.default_date_format'))
+                        : $cell;
+                    }
+
+                    if (count($rows) == $importBatch->settings['limit']) {
+                        break;
+                    }
+                }
+            }
+        }
+        $this->reader->close();
 
         $this->data = [
             'crud'        => $this->crud,
             'importBatch' => $importBatch,
-            'rows'        => array_slice($rows, 0, config('fournodes.import-operation.preview_row_limit')),
+            'sheets'      => $sheets,
+            'rows'        => $rows,
             'mappings'    => ImportMapping::whereModelType($this->crud->getModel()->getMorphClass())->get(),
             'fields'      => $this->getFields(),
         ];
@@ -183,17 +220,69 @@ trait ImportOperation
         }
 
         // Load batch information.
-        $importBatch     = ImportBatch::find($request->import_batch_id);
-        $importBatchData = $this->fileToArray($importBatch->path);
+        $importBatch = ImportBatch::find($request->import_batch_id);
+
+        if ($request->sheet) {
+            $importBatch->settings = [
+                'sheet'  => $request->sheet,
+                'header' => $request->header,
+                'offset' => $request->offset,
+                'limit'  => $request->limit,
+            ];
+
+            $importBatch->save();
+        }
+
+        // initiating file reader
+        $this->initiateFileReader($importBatch->path);
 
         // If coming from error view update batch data with updated data
         if (isset($request->error_rows)) {
-            foreach ($request->error_rows as $key => $row) {
-                $importBatchData[$key] = $row;
+            // dd($request->error_rows);
+            $inputFileInfo  = pathinfo($importBatch->path);
+
+            $inputFileName  = storage_path("app/{$importBatch->path}");
+            $outputFileName = storage_path("app/{$inputFileInfo['dirname']}/" . Str::uuid()->toString() . ".{$inputFileInfo['extension']}");
+
+            $writer = WriterEntityFactory::createWriterFromFile($outputFileName);
+            $writer->setShouldCreateNewSheetsAutomatically(false);
+            $writer->openToFile($outputFileName);
+
+            foreach ($this->reader->getSheetIterator() as $sheetIndex => $sheet) {
+                if ($sheetIndex == $importBatch->settings['sheet']) {
+                    foreach ($sheet->getRowIterator() as $rowIndex => $row) {
+                        foreach ($row->toArray() as $cellIndex => $cell) {
+                            // If cell value is a DateTime instance
+                            if ($cell instanceof DateTime) {
+                                $cell = (
+                                    isset($request->error_rows[$rowIndex][$cellIndex])
+                                    ? (new DateTime($request->error_rows[$rowIndex][$cellIndex]))
+                                    : $cell
+                                )->format('Y-m-d');
+                            } else {
+                                $cell = (
+                                    isset($request->error_rows[$rowIndex][$cellIndex])
+                                    ? $request->error_rows[$rowIndex][$cellIndex]
+                                    : $cell
+                                );
+                            }
+
+                            // update row
+                            $row->setCellAtIndex(WriterEntityFactory::createCell($cell), $cellIndex);
+                        }
+                        // write the edited row to the new file in new file
+                        $writer->addRow($row);
+                    }
+                }
             }
 
-            $this->arrayToFile($importBatch->path, $importBatchData);
+            $writer->close();
+
+            // Delete old file and rename new file with old file's name
+            unlink($inputFileName);
+            rename($outputFileName, $inputFileName);
         }
+
         // Create a mapping index lookup array
         $mappingLookup = [];
         foreach ($importMappingData['mapping'] as $key => $value) {
@@ -202,54 +291,104 @@ trait ImportOperation
             }
         }
 
-        $importData = [];
-        foreach ($importBatchData as $row) {
-            $temp = [];
-
-            // Mapping data
-            foreach ($mappingLookup as $mappingName => $index) {
-                $temp[$mappingName] = $row[$index];
-            }
-
-            // Adding default fields
-            foreach ($importBatch->defaults as $mappingName => $mappingValue) {
-                $temp[$mappingName] = $mappingValue;
-            }
-
-            $importData[] = $temp;
-        }
-
         // Run validations and create.
-        $errorRows          = [];
-        $errorMessages      = [];
-        $errorRowCount      = 0;
-        $errorRowLimit      = (int) config('fournodes.import-operation.error_row_limit');
+        $errorRows     = [];
+        $errorMessages = [];
+        $errorRowCount = 0;
+        $errorRowLimit = (int) config('fournodes.import-operation.error_row_limit');
 
         $validationRules    = $this->importValidationRules();
         $validationMessages = $this->importValidationMessages();
 
-        foreach ($importData as $index => $entity) {
-            $validator = Validator::make($entity, $validationRules, $validationMessages);
+        // Iterate over all the rows of the selected sheet
+        foreach ($this->reader->getSheetIterator() as $sheetIndex => $sheet) {
+            if ($sheetIndex == $importBatch->settings['sheet']) {
+                $offset =  $importBatch->settings['offset'] + ($importBatch->settings['header'] ? 1 : 0);
 
-            if ($validator->fails()) {
-                $errorRowCount++;
-                $errorMessages[$index] = $validator->errors()->toArray();
-                $errorRows[$index]     = $importBatchData[$index];
-            }
+                foreach ($sheet->getRowIterator() as $rowIndex => $row) {
+                    $mappedRow = [];
 
-            if ($errorRowCount >= $errorRowLimit) {
-                break;
+                    if ($rowIndex <= $offset) {
+                        continue;
+                    }
+
+                    // Mapping each row to seleted mapping
+                    $cells = $row->toArray();
+                    foreach ($mappingLookup as $mappingName => $index) {
+                        $mappedRow[$mappingName] = $cells[$index];
+                        // $mappedRow[$mappingName] = $defaultValues[$mappingName] ?? $row->getCellAtIndex($index);
+                    }
+
+                    // Override default fields
+                    foreach ($importBatch->defaults as $mappingName => $mappingValue) {
+                        $mappedRow[$mappingName] = $mappingValue;
+                    }
+
+                    // Running validation against the mapped row
+                    $validator = Validator::make($mappedRow, $validationRules, $validationMessages);
+
+                    // If validation fails, add row to error and its error messages
+                    if ($validator->fails()) {
+                        $errorRowCount++;
+                        $errorMessages[$rowIndex] = $validator->errors()->toArray();
+                        $errorRows[$rowIndex]     = $cells;
+                    }
+
+                    // break loop if row count exceeds error rows limit
+                    if ($errorRowCount >= $errorRowLimit) {
+                        break;
+                    }
+                }
             }
         }
 
+        // If no errors werer found
         if ($errorRowCount === 0) {
-            // TODO: Add logic to handle what happens when some records are not imported
-            $insertCount = $this->crud->model->insertOrIgnore($importData);
+            $insertCount = 0;
+            $importData  = [];
+
+            // Iterate over all the rows of the selected sheet
+            foreach ($this->reader->getSheetIterator() as $sheetIndex => $sheet) {
+                if ($sheetIndex == $importBatch->settings['sheet']) {
+                    $offset =  $importBatch->settings['offset'] + ($importBatch->settings['header'] ? 1 : 0);
+
+                    foreach ($sheet->getRowIterator() as $rowIndex => $row) {
+                        if ($rowIndex <= $offset) {
+                            continue;
+                        }
+
+                        // Mapping each row to seleted mapping
+                        $row = $row->toArray();
+                        foreach ($mappingLookup as $mappingName => $index) {
+                            $importData[$rowIndex][$mappingName] = $row[$index];
+                        }
+
+                        // Adding default fields
+                        foreach ($importBatch->defaults as $mappingName => $mappingValue) {
+                            $importData[$rowIndex][$mappingName] = $mappingValue;
+                        }
+
+                        // Batch insert when insertable row count reaches a limit
+                        if (count($importData) >= 500) {
+                            $insertCount += $this->crud->model->insertOrIgnore($importData);
+                            $importData = [];
+                        }
+                    }
+                }
+            }
+            // $this->reader->close();
+
+            if (!empty($importData)) {
+                // TODO: Add logic to handle what happens when some records are not imported
+                $insertCount += $this->crud->model->insertOrIgnore($importData);
+            }
 
             Alert::success(trans('fournodes.import-operation::import-operation.import_success', ['count' => $insertCount]))->flash();
 
             return redirect($this->crud->route);
         } else {
+            // $this->reader->close();
+
             $this->data = [
                 'crud'            => $this->crud,
                 'importBatch'     => $importBatch,
@@ -338,25 +477,13 @@ trait ImportOperation
         return $fields->toArray();
     }
 
-    private function fileToArray($filepath)
+    private function initiateFileReader($filePath = null)
     {
-        $data = array_map('str_getcsv', file(storage_path($filepath)));
-
-        return $data;
-    }
-
-    private function arrayToFile($filepath = null, $data)
-    {
-        $filepath = $filepath ?? 'app/import/' . Str::uuid()->toString();
-
-        $file = fopen(storage_path($filepath), 'w');
-
-        foreach ($data as $line) {
-            fputcsv($file, $line);
+        if ($filePath) {
+            $inputFileName = storage_path('app/' . $filePath);
+            $this->reader  = ReaderEntityFactory::createReaderFromFile($inputFileName);
+            // $this->reader->setShouldFormatDates(true);
+            $this->reader->open($inputFileName);
         }
-
-        fclose($file);
-
-        return $filepath;
     }
 }

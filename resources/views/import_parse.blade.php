@@ -42,13 +42,12 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="settings" class="col-md-12">
+                        <div id="settings" class="col-md-12 collapse">
                             <div class="card card-body mb-3">
                                 <div class="row">
                                     <div class="col-md-6 form-group">
                                         <label>Sheet</label>
                                         <select name="sheet" class="form-control">
-                                            <option value="" disabled>Select Sheet</option>
                                             @foreach ($sheets as $sheetNumber => $sheetName)
                                                 <option value="{{ $sheetNumber }}" {{ $importBatch->settings['sheet'] == $sheetNumber ? 'selected' : '' }}>
                                                     {{ $sheetName }}

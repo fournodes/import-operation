@@ -25,6 +25,7 @@
                         <table class="table table-bordered table-striped table-hover border-top">
                             <thead>
                                 <tr>
+                                    <th>#</th>
                                     @foreach ($selectedMapping['mapping'] as $map)
                                         <th>
                                             {{ $map ? $mappingLabels[$map]['label'] : '' }}
@@ -37,6 +38,7 @@
                                 @foreach ($errorRows as $rowIndex => $errorRow)
                                     @if (isset($errorMessages[$rowIndex]))
                                         <tr>
+                                            <td>{{ $rowIndex }}</td>
                                             @foreach ($errorRow as $columnIndex => $columnValue)
                                                 <td class="text-truncate">
                                                     @if (isset($errorMessages[$rowIndex][$selectedMapping['mapping'][$columnIndex]]))
@@ -82,9 +84,9 @@
 
 @section('after_styles')
     <style type="text/css">
-        table tr th,
-        table tr td {
-            min-width: 150px;
+        table tr th:not(:first-child),
+        table tr td:not(:first-child) {
+            min-width: 200px;
             max-width: 300px;
         }
 

@@ -91,9 +91,10 @@
                         <table class="table table-bordered table-striped table-hover">
                             <thead>
                                 <tr>
+                                    <th>#</th>
                                     @for ($i = 1; $i <= count($rows[2]); $i++)
                                         <th>
-                                            <select data-column="{{ $i }}" name="mapping[]" class="form-control" tabindex="{{ $i }}">
+                                            <select data-column="{{ $i+1 }}" name="mapping[]" class="form-control" tabindex="{{ $i }}">
                                                 <option value=""></option>
                                                 @foreach ($fields as $field)
                                                     <option value="{{ $field['name'] }}">
@@ -106,8 +107,9 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach ($rows as $row)
+                                @foreach ($rows as $rowIndex => $row)
                                     <tr>
+                                        <td>{{ $rowIndex }}</td>
                                         @foreach ($row as $key => $value)
                                             <td class="text-truncate">{{ $value }}</td>
                                         @endforeach
@@ -133,8 +135,8 @@
 
 @section('after_styles')
     <style type="text/css">
-        table tr th,
-        table tr td {
+        table tr th:not(:first-child),
+        table tr td:not(:first-child) {
             min-width: 200px;
             max-width: 300px;
         }

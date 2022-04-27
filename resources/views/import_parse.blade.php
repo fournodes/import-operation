@@ -176,6 +176,14 @@
             let mappingSelected = mappings.find('option[value!=""]:selected');
             let mappingNotSelected = mappings.find('option[value=""]:selected');
 
+            // Remove disabled from all options
+            mappings.find('option').prop('disabled', false);
+
+            // Apply disabled on all selected options
+            mappingSelected.each(function(i, o) {
+                mappings.find('option[value="'+ o.value +'"]').not(o).prop('disabled', true);
+            });
+
             $('#table_info').html(`${mappingSelected.length} column(s) mapped. ${mappingNotSelected.length} column(s) not mapped.`);
         });
 

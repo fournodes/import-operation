@@ -120,7 +120,7 @@ trait ImportOperation
 
         $importBatch = ImportBatch::create([
             'defaults'  => $this->crud->getStrippedSaveRequest(),
-            'path'      => $request->file('file')->store('import'),
+            'path'      => $request->file('file')->storeAs('import', Str::uuid()->toString() . '.' . $request->file('file')->getClientOriginalExtension()),
             'settings'  => [
                 'sheet'   => 1,
                 'header'  => $request->get('file_contains_headers'),
@@ -201,6 +201,7 @@ trait ImportOperation
      */
     public function process(Request $request)
     {
+        set_time_limit(-1);
         $this->crud->hasAccessOrFail('import');
 
         $importMappingData = [

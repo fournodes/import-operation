@@ -120,7 +120,7 @@ trait ImportOperation
 
         $importBatch = ImportBatch::create([
             'defaults'  => $this->crud->getStrippedSaveRequest(),
-            'path'      => $request->file('file')->store('imports'),
+            'path'      => $request->file('file')->store('import'),
             'settings'  => [
                 'sheet'   => 1,
                 'header'  => $request->get('file_contains_headers'),
@@ -233,13 +233,13 @@ trait ImportOperation
             $importBatch->save();
         }
 
-        // initiating file reader
-        $this->initiateFileReader($importBatch->path);
-
         // If coming from error view update batch data with updated data
         if (isset($request->error_rows)) {
-            // dd($request->error_rows);
             $inputFileInfo  = pathinfo($importBatch->path);
+
+            $inputFileName = storage_path('app/' . $importBatch->path);
+            $reader        = ReaderEntityFactory::createReaderFromFile($inputFileName);
+            $reader->open($inputFileName);
 
             $inputFileName  = storage_path("app/{$importBatch->path}");
             $outputFileName = storage_path("app/{$inputFileInfo['dirname']}/" . Str::uuid()->toString() . ".{$inputFileInfo['extension']}");
@@ -248,7 +248,7 @@ trait ImportOperation
             $writer->setShouldCreateNewSheetsAutomatically(false);
             $writer->openToFile($outputFileName);
 
-            foreach ($this->reader->getSheetIterator() as $sheetIndex => $sheet) {
+            foreach ($reader->getSheetIterator() as $sheetIndex => $sheet) {
                 if ($sheetIndex == $importBatch->settings['sheet']) {
                     foreach ($sheet->getRowIterator() as $rowIndex => $row) {
                         foreach ($row->toArray() as $cellIndex => $cell) {
@@ -276,12 +276,16 @@ trait ImportOperation
                 }
             }
 
+            $reader->close();
             $writer->close();
 
             // Delete old file and rename new file with old file's name
             unlink($inputFileName);
             rename($outputFileName, $inputFileName);
         }
+
+        // initiating file reader
+        $this->initiateFileReader($importBatch->path);
 
         // Create a mapping index lookup array
         $mappingLookup = [];
@@ -306,17 +310,23 @@ trait ImportOperation
                 $offset =  $importBatch->settings['offset'] + ($importBatch->settings['header'] ? 1 : 0);
 
                 foreach ($sheet->getRowIterator() as $rowIndex => $row) {
+                    $cells     = [];
                     $mappedRow = [];
 
                     if ($rowIndex <= $offset) {
                         continue;
                     }
 
-                    // Mapping each row to seleted mapping
-                    $cells = $row->toArray();
-                    foreach ($mappingLookup as $mappingName => $index) {
-                        $mappedRow[$mappingName] = $cells[$index];
-                        // $mappedRow[$mappingName] = $defaultValues[$mappingName] ?? $row->getCellAtIndex($index);
+                    foreach ($row->toArray() as $cellIndex => $cell) {
+                        $cellValue = $cell instanceof DateTime
+                        ? $cell->format('Y-m-d')
+                        : $cell;
+
+                        if (!empty($importMappingData['mapping'][$cellIndex])) {
+                            $mappedRow[$importMappingData['mapping'][$cellIndex]] = $cellValue;
+                        }
+
+                        $cells[] = $cellValue;
                     }
 
                     // Override default fields

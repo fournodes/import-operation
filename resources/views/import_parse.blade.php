@@ -15,6 +15,7 @@
                 <form class="form-horizontal" method="POST" action="{{ url($crud->route . '/import/process') }}" onsubmit="return checkIfMappingIsSelected()">
                     {{ csrf_field() }}
                     <input type="hidden" name="import_batch_id" value="{{ $importBatch->id }}" />
+                    <input type="hidden" name="total" value="{{ $totalRows }}" />
                     <div class="row">
                         <div class="col-md-12 mb-3">
                             <div class="input-group mapping-group d-none">
@@ -45,7 +46,7 @@
                         <div id="settings" class="col-md-12 collapse">
                             <div class="card card-body mb-3">
                                 <div class="row">
-                                    <div class="col-md-6 form-group">
+                                    <div class="col-md-{{ $bottomRows ? 4 : 6 }} form-group">
                                         <label>Sheet</label>
                                         <select name="sheet" class="form-control">
                                             @foreach ($sheets as $sheetNumber => $sheetName)
@@ -63,13 +64,23 @@
                                         </select>
                                     </div>
                                     <div class="col-md-2 form-group">
-                                        <label>Offset</label>
-                                        <select name="offset" class="form-control">
-                                            @for ($x = 0; $x <= $importBatch->settings['limit']; $x++)
-                                                <option value="{{ $x }}" {{ $importBatch->settings['offset'] == $x ? 'selected' : '' }}>{{ $x }}</option>
+                                        <label>Top Offset</label>
+                                        <select name="top_offset" class="form-control">
+                                            @for ($x = 0; $x <= count($topRows); $x++)
+                                                <option value="{{ $x }}" {{ $importBatch->settings['top_offset'] == $x ? 'selected' : '' }}>{{ $x }}</option>
                                             @endfor
                                         </select>
                                     </div>
+                                    @if ($bottomRows)
+                                        <div class="col-md-2 form-group">
+                                            <label>Bottom Offset</label>
+                                            <select name="bottom_offset" class="form-control">
+                                                @for ($x = 0; $x <= count($bottomRows); $x++)
+                                                    <option value="{{ $x }}" {{ $importBatch->settings['bottom_offset'] == $x ? 'selected' : '' }}>{{ $x }}</option>
+                                                @endfor
+                                            </select>
+                                        </div>
+                                    @endif
                                     <div class="col-md-2 form-group">
                                         <label>Limit</label>
                                         <select name="limit" class="form-control">
@@ -92,7 +103,7 @@
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    @for ($i = 1; $i <= count($rows[2]); $i++)
+                                    @for ($i = 1; $i <= $totalColumns; $i++)
                                         <th>
                                             <select data-column="{{ $i+1 }}" name="mapping[]" class="form-control" tabindex="{{ $i }}">
                                                 <option value=""></option>
@@ -107,20 +118,36 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach ($rows as $rowIndex => $row)
-                                    <tr>
+                                @foreach ($topRows as $rowIndex => $row)
+                                    <tr class="top_rows">
                                         <td>{{ $rowIndex }}</td>
                                         @foreach ($row as $key => $value)
                                             <td class="text-truncate">{{ $value }}</td>
                                         @endforeach
                                     </tr>
                                 @endforeach
+                                @if ($bottomRows)
+                                    <tr>
+                                        <td class="text-center" colspan="{{ $totalColumns + 1 }}">.....</td>
+                                    </tr>
+                                    @foreach ($bottomRows as $footerRowIndex => $footerRow)
+                                        <tr class="bottom_rows">
+                                            <td>{{ $footerRowIndex }}</td>
+                                            @foreach ($footerRow as $key => $value)
+                                                <td class="text-truncate">{{ $value }}</td>
+                                            @endforeach
+                                        </tr>
+                                    @endforeach
+                                @endif
                             </tbody>
 
                         </table>
                     </div>
 
-                    <div class="mt-3" id="table_info"></div>
+                    <div class="row mt-3">
+                        <div class="col-md-6" id="count_info"></div>
+                        <div class="col-md-6 text-right" id="mapping_info"></div>
+                    </div>
 
                     <div class="mt-3">
                         <button type="submit" class="btn ml-2 btn-primary">Import Data</button>
@@ -186,7 +213,7 @@
                 mappings.find('option[value="'+ o.value +'"]').not(o).prop('disabled', true);
             });
 
-            $('#table_info').html(`${mappingSelected.length} column(s) mapped. ${mappingNotSelected.length} column(s) not mapped.`);
+            $('#mapping_info').html(`${mappingSelected.length} column(s) mapped. ${mappingNotSelected.length} column(s) not mapped.`);
         });
 
         let checkIfMappingIsSelected = () => {
@@ -209,26 +236,49 @@
             window.location.search = new URLSearchParams({
                 sheet: $('select[name="sheet"]').val(),
                 header: $('select[name="header"]').val(),
-                offset: $('select[name="offset"]').val(),
+                top_offset: $('select[name="top_offset"]').val(),
+                bottom_offset: $('select[name="bottom_offset"]').val(),
                 limit: $('select[name="limit"]').val(),
             }).toString();
         });
 
         // Listen for change in settings that modify the view
-        $('select[name="header"], select[name="offset"]').on('change', function() {
+        $('select[name="header"], select[name="top_offset"]').on('change', function() {
             const header = Number.parseInt($('select[name="header"]').val());
-            const offset = Number.parseInt($('select[name="offset"]').val());
+            const topOffset = Number.parseInt($('select[name="top_offset"]').val());
             
-            $('table tbody tr').removeClass('font-weight-bold').show();
-
-            for (let index = 0; index < offset; index++) {
+            $('table tbody tr.top_rows').removeClass('font-weight-bold').show();
+            
+            for (let index = 0; index < topOffset; index++) {
                 $('table tbody tr').eq(index).hide();
             }
-
+            
             if(header) {
-                $('table tbody tr').eq(offset).addClass('font-weight-bold');
+                $('table tbody tr').eq(topOffset).addClass('font-weight-bold');
             }
         });
+        
+        $('select[name="bottom_offset"]').on('change', function() {
+            const bottomOffset = Number.parseInt($('select[name="bottom_offset"]').val());
+
+            $('table tbody tr.bottom_rows').show();
+            
+            if(bottomOffset > 0) {
+                $('table tbody tr.bottom_rows').slice(bottomOffset * -1).hide();
+            }
+
+        });
+
+        $('select[name="top_offset"], select[name="bottom_offset"], select[name="mapping[]"]').on('change', function() {
+            const total = Number.parseInt($('input[name="total"]').val());
+            const topOffset = Number.parseInt($('select[name="top_offset"]').val());
+            const bottomOffset = Number.parseInt($('select[name="bottom_offset"]').val());
+            const header = Number.parseInt($('select[name="header"]').val());
+            const rowsToBeInserted = total - topOffset - bottomOffset - header;
+
+            $('#count_info').html(`${rowsToBeInserted} rows will be inserted`);
+        });
+
     </script>
 @endsection
 

@@ -122,10 +122,12 @@ trait ImportOperation
             'defaults'  => $this->crud->getStrippedSaveRequest(),
             'path'      => $request->file('file')->storeAs('import', Str::uuid()->toString() . '.' . $request->file('file')->getClientOriginalExtension()),
             'settings'  => [
-                'sheet'   => 1,
-                'header'  => $request->get('file_contains_headers'),
-                'offset'  => 0,
-                'limit'   => config('fournodes.import-operation.preview_row_limit'),
+                'sheet'         => 1,
+                'header'        => $request->get('file_contains_headers'),
+                'top_offset'    => 0,
+                'bottom_offset' => 0,
+                'limit'         => config('fournodes.import-operation.preview_row_limit'),
+                'total'         => 0,
             ],
         ]);
 
@@ -140,17 +142,21 @@ trait ImportOperation
      */
     public function map(int $importBatchId)
     {
-        $rows   = [];
-        $sheets = [];
+        $topRows       = [];
+        $bottomRows    = [];
+        $sheets        = [];
+        $topRowsFilled = $bottomRowsFilled = false;
 
         $importBatch = ImportBatch::findOrFail($importBatchId);
 
         if (request()->get('sheet')) {
             $importBatch->settings = [
-                'sheet'  => request()->get('sheet'),
-                'header' => request()->get('header'),
-                'offset' => request()->get('offset'),
-                'limit'  => request()->get('limit'),
+                'sheet'         => request()->get('sheet'),
+                'header'        => request()->get('header'),
+                'top_offset'    => request()->get('top_offset'),
+                'bottom_offset' => request()->get('bottom_offset'),
+                'limit'         => request()->get('limit'),
+                'total'         => request()->get('total'),
             ];
 
             $importBatch->save();
@@ -163,28 +169,41 @@ trait ImportOperation
 
             if ($sheetIndex == $importBatch->settings['sheet']) {
                 foreach ($sheet->getRowIterator() as $rowIndex => $row) {
-                    foreach ($row->toArray() as $cell) {
-                        $rows[$rowIndex][] = $cell instanceof DateTime
-                        ? Carbon::instance($cell)->isoFormat(config('backpack.base.default_date_format'))
-                        : $cell;
+                    if ($topRowsFilled) {
+                        $bottomRows[$rowIndex] = $row->toArray();
+                        if ($bottomRowsFilled) {
+                            unset($bottomRows[array_key_first($bottomRows)]);
+                        }
+                    } else {
+                        $topRows[$rowIndex] = $row->toArray();
                     }
 
-                    if (count($rows) == $importBatch->settings['limit']) {
-                        break;
+                    if (!$topRowsFilled && count($topRows) == $importBatch->settings['limit']) {
+                        $topRowsFilled = true;
+                    }
+                    if (!$bottomRowsFilled && count($bottomRows) == $importBatch->settings['limit']) {
+                        $bottomRowsFilled = true;
                     }
                 }
             }
         }
-        $this->reader->close();
+
+        $topRows    = $this->convertDateTimeInRowsToValue($topRows);
+        $bottomRows = $this->convertDateTimeInRowsToValue($bottomRows);
 
         $this->data = [
-            'crud'        => $this->crud,
-            'importBatch' => $importBatch,
-            'sheets'      => $sheets,
-            'rows'        => $rows,
-            'mappings'    => ImportMapping::whereModelType($this->crud->getModel()->getMorphClass())->get(),
-            'fields'      => $this->getFields(),
+            'crud'         => $this->crud,
+            'importBatch'  => $importBatch,
+            'sheets'       => $sheets,
+            'topRows'      => $topRows,
+            'bottomRows'   => $bottomRows,
+            'totalRows'    => $sheet->getRowIterator()->key(),
+            'totalColumns' => count(current($topRows)),
+            'mappings'     => ImportMapping::whereModelType($this->crud->getModel()->getMorphClass())->get(),
+            'fields'       => $this->getFields(),
         ];
+
+        $this->reader->close();
 
         // load the view from /resources/views/vendor/fournodes/import-operation/ if it exists, otherwise load the one in the package
         return view($this->crud->get('import.parse.view') ?? 'fournodes.import-operation::import_parse', $this->data);
@@ -225,10 +244,12 @@ trait ImportOperation
 
         if ($request->sheet) {
             $importBatch->settings = [
-                'sheet'  => $request->sheet,
-                'header' => $request->header,
-                'offset' => $request->offset,
-                'limit'  => $request->limit,
+                'sheet'         => $request->sheet,
+                'header'        => $request->header,
+                'top_offset'    => $request->top_offset,
+                'bottom_offset' => $request->bottom_offset,
+                'limit'         => $request->limit,
+                'total'         => $request->total,
             ];
 
             $importBatch->save();
@@ -305,16 +326,21 @@ trait ImportOperation
         $validationRules    = $this->importValidationRules();
         $validationMessages = $this->importValidationMessages();
 
+        $topOffset = $importBatch->settings['top_offset'] + $importBatch->settings['header'];
+        $rowLimit  = $importBatch->settings['total'] - $importBatch->settings['bottom_offset'];
+
         // Iterate over all the rows of the selected sheet
         foreach ($this->reader->getSheetIterator() as $sheetIndex => $sheet) {
             if ($sheetIndex == $importBatch->settings['sheet']) {
-                $offset =  $importBatch->settings['offset'] + ($importBatch->settings['header'] ? 1 : 0);
-
                 foreach ($sheet->getRowIterator() as $rowIndex => $row) {
                     $cells     = [];
                     $mappedRow = [];
 
-                    if ($rowIndex <= $offset) {
+                    if ($rowIndex > $rowLimit) {
+                        break;
+                    }
+
+                    if ($rowIndex <= $topOffset) {
                         continue;
                     }
 
@@ -361,10 +387,12 @@ trait ImportOperation
             // Iterate over all the rows of the selected sheet
             foreach ($this->reader->getSheetIterator() as $sheetIndex => $sheet) {
                 if ($sheetIndex == $importBatch->settings['sheet']) {
-                    $offset =  $importBatch->settings['offset'] + ($importBatch->settings['header'] ? 1 : 0);
-
                     foreach ($sheet->getRowIterator() as $rowIndex => $row) {
-                        if ($rowIndex <= $offset) {
+                        if ($rowIndex > $rowLimit) {
+                            break;
+                        }
+
+                        if ($rowIndex <= $topOffset) {
                             continue;
                         }
 
@@ -496,5 +524,20 @@ trait ImportOperation
             // $this->reader->setShouldFormatDates(true);
             $this->reader->open($inputFileName);
         }
+    }
+
+    private function convertDateTimeInRowsToValue($rows)
+    {
+        if (count($rows)) {
+            foreach ($rows as $rowIndex => $row) {
+                foreach ($row as $cellIndex => $cell) {
+                    if ($cell instanceof DateTime) {
+                        $rows[$rowIndex][$cellIndex] = Carbon::instance($cell)->isoFormat(config('backpack.base.default_date_format'));
+                    }
+                }
+            }
+        }
+
+        return $rows;
     }
 }

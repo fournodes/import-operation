@@ -270,9 +270,16 @@ trait ImportOperation
             $writer->setShouldCreateNewSheetsAutomatically(false);
             $writer->openToFile($outputFileName);
 
+            $writtenRows = 0;
+
             foreach ($reader->getSheetIterator() as $sheetIndex => $sheet) {
                 if ($sheetIndex == $importBatch->settings['sheet']) {
                     foreach ($sheet->getRowIterator() as $rowIndex => $row) {
+                        // If row is deleted by user, skip it
+                        if (isset($request->remove_rows[$rowIndex]) && $request->remove_rows[$rowIndex] == 1) {
+                            continue;
+                        }
+
                         foreach ($row->toArray() as $cellIndex => $cell) {
                             // If cell value is a DateTime instance
                             if ($cell instanceof DateTime) {
@@ -294,9 +301,16 @@ trait ImportOperation
                         }
                         // write the edited row to the new file in new file
                         $writer->addRow($row);
+                        $writtenRows++;
                     }
                 }
             }
+
+            // Update total number of newly written rows
+            $batchSettings = $importBatch->settings;            
+            $batchSettings['total'] = $writtenRows;
+            $importBatch->settings = $batchSettings;
+            $importBatch->save();
 
             $reader->close();
             $writer->close();
@@ -415,7 +429,7 @@ trait ImportOperation
                     }
                 }
             }
-            // $this->reader->close();
+            $this->reader->close();
 
             if (!empty($importData)) {
                 // TODO: Add logic to handle what happens when some records are not imported
@@ -426,7 +440,7 @@ trait ImportOperation
 
             return redirect($this->crud->route);
         } else {
-            // $this->reader->close();
+            $this->reader->close();
 
             $this->data = [
                 'crud'            => $this->crud,

@@ -27,20 +27,21 @@
                                 <tr>
                                     <th>#</th>
                                     @foreach ($selectedMapping['mapping'] as $map)
-                                        <th>
+                                        <th class="limit-width {{ $map ? '' : 'd-none' }}">
                                             {{ $map ? $mappingLabels[$map]['label'] : '' }}
                                             <input type="hidden" name="mapping[]" value="{{ $map }}" />
                                         </th>
                                     @endforeach
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach ($errorRows as $rowIndex => $errorRow)
                                     @if (isset($errorMessages[$rowIndex]))
-                                        <tr>
-                                            <td>{{ $rowIndex }}</td>
+                                        <tr>                                            
+                                            <td class="align-middle">{{ $rowIndex }}</td>
                                             @foreach ($errorRow as $columnIndex => $columnValue)
-                                                <td class="text-truncate">
+                                                <td class="limit-width text-truncate align-middle {{ $selectedMapping['mapping'][$columnIndex] ? '' : 'd-none' }}">
                                                     @if (isset($errorMessages[$rowIndex][$selectedMapping['mapping'][$columnIndex]]))
                                                         <input type="text" name="error_rows[{{ $rowIndex }}][{{ $columnIndex }}]" value="{{ $columnValue }}" class="form-control is-invalid" />
                                                         <div class="invalid-feedback">
@@ -54,6 +55,12 @@
                                                     @endif
                                                 </td>
                                             @endforeach
+                                            <td class="align-middle text-center">
+                                                <a href="#" class="btn btn-sm btn-danger remove_row">
+                                                    <i class="la la-times"></i>
+                                                    <input type="hidden" name="remove_rows[{{ $rowIndex }}]" value="0">
+                                                </a>
+                                            </td>
                                         </tr>
                                     @endif
                                 @endforeach
@@ -84,11 +91,35 @@
 
 @section('after_styles')
     <style type="text/css">
-        table tr th:not(:first-child),
-        table tr td:not(:first-child) {
+        .limit-width {
             min-width: 200px;
             max-width: 300px;
         }
 
+        .del_row {
+            text-decoration: line-through;
+        }
+
     </style>
+@endsection
+
+@section('after_scripts')
+    <script>
+        $('.remove_row').on('click', function () {
+            const value = Number.parseInt($(this).find('input').val());
+
+            if(value) {
+                $(this).removeClass('btn-success').addClass('btn-danger');
+                $(this).find('i').removeClass('la-check').addClass('la-times');
+                $(this).parents('tr').removeClass('del_row');
+                $(this).find('input').val(0);
+            }
+            else {
+                $(this).removeClass('btn-danger').addClass('btn-success');
+                $(this).find('i').removeClass('la-times').addClass('la-check');
+                $(this).parents('tr').addClass('del_row');
+                $(this).find('input').val(1);
+            }
+        });
+    </script>
 @endsection

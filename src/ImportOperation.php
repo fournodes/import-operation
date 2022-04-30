@@ -521,10 +521,10 @@ trait ImportOperation
 
             // Any field that is default added to import step
             $fields = $importFields->merge(
-                $allFields->filter(fn ($field) => isset($field['default']) && $field['default'] == true)
+                $allFields->filter(fn ($field) => isset($field['import_default']) && $field['import_default'] == true)
             );
         } else {
-            $fields = $allFields->filter(fn ($field) => !isset($field['default']));
+            $fields = $allFields->filter(fn ($field) => !isset($field['import_default']));
         }
 
         return $fields->toArray();

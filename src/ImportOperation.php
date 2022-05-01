@@ -267,7 +267,6 @@ trait ImportOperation
             $outputFileName = storage_path("app/{$inputFileInfo['dirname']}/" . Str::uuid()->toString() . ".{$inputFileInfo['extension']}");
 
             $writer = WriterEntityFactory::createWriterFromFile($outputFileName);
-            $writer->setShouldCreateNewSheetsAutomatically(false);
             $writer->openToFile($outputFileName);
 
             $writtenRows = 0;

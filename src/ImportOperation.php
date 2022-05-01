@@ -2,6 +2,8 @@
 
 namespace Fournodes\ImportOperation;
 
+set_time_limit(-1);
+
 use Alert;
 use Box\Spout\Reader\Common\Creator\ReaderEntityFactory;
 use Box\Spout\Reader\ReaderInterface;
@@ -220,7 +222,6 @@ trait ImportOperation
      */
     public function process(Request $request)
     {
-        set_time_limit(-1);
         $this->crud->hasAccessOrFail('import');
 
         $importMappingData = [

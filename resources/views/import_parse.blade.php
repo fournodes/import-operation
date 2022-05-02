@@ -15,7 +15,7 @@
                 <form class="form-horizontal" method="POST" action="{{ url($crud->route . '/import/process') }}" onsubmit="return checkIfMappingIsSelected()">
                     {{ csrf_field() }}
                     <input type="hidden" name="import_batch_id" value="{{ $importBatch->id }}" />
-                    <input type="hidden" name="total" value="{{ $totalRows }}" />
+                    <input type="hidden" name="total" value="{{ $importBatch->settings['total'] }}" />
                     <div class="row">
                         <div class="col-md-12 mb-3">
                             <div class="input-group mapping-group d-none">
@@ -118,24 +118,24 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach ($topRows as $rowIndex => $row)
+                                @foreach ($topRows as $topRowNumber => $topRow)
                                     <tr class="top_rows">
-                                        <td>{{ $rowIndex }}</td>
-                                        @foreach ($row as $key => $value)
-                                            <td class="text-truncate">{{ $value }}</td>
-                                        @endforeach
+                                        <td>{{ $topRowNumber }}</td>
+                                        @for ($i = 0; $i < $totalColumns; $i++)
+                                            <td class="text-truncate">{{ $topRow[$i] ?? ''}}</td>
+                                        @endfor
                                     </tr>
                                 @endforeach
                                 @if ($bottomRows)
                                     <tr>
                                         <td class="text-center" colspan="{{ $totalColumns + 1 }}">.....</td>
                                     </tr>
-                                    @foreach ($bottomRows as $footerRowIndex => $footerRow)
+                                    @foreach ($bottomRows as $bottomRowNumber => $bottomRow)
                                         <tr class="bottom_rows">
-                                            <td>{{ $footerRowIndex }}</td>
-                                            @foreach ($footerRow as $key => $value)
-                                                <td class="text-truncate">{{ $value }}</td>
-                                            @endforeach
+                                            <td>{{ $bottomRowNumber }}</td>
+                                            @for ($i = 0; $i < $totalColumns; $i++)
+                                                <td class="text-truncate">{{ $bottomRow[$i] ?? ''}}</td>
+                                            @endfor
                                         </tr>
                                     @endforeach
                                 @endif
@@ -232,7 +232,13 @@
         };
 
         // Listen for change in settings that refresh the page
-        $('select[name="sheet"], select[name="limit"]').on('change', function() {   
+        $('select[name="sheet"]').on('change', function() {   
+            window.location.search = new URLSearchParams({
+                sheet: $('select[name="sheet"]').val(),
+            }).toString();
+        });
+
+        $('select[name="limit"]').on('change', function() {   
             window.location.search = new URLSearchParams({
                 sheet: $('select[name="sheet"]').val(),
                 header: $('select[name="header"]').val(),

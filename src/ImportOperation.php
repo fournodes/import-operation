@@ -124,12 +124,7 @@ trait ImportOperation
             'defaults'  => $this->crud->getStrippedSaveRequest(),
             'path'      => $request->file('file')->storeAs('import', Str::uuid()->toString() . '.' . $request->file('file')->getClientOriginalExtension()),
             'settings'  => [
-                'sheet'         => 1,
-                'header'        => $request->get('file_contains_headers'),
-                'top_offset'    => 0,
-                'bottom_offset' => 0,
-                'limit'         => config('fournodes.import-operation.preview_row_limit'),
-                'total'         => 0,
+                'header' => $request->get('file_contains_headers'),
             ],
         ]);
 
@@ -148,47 +143,56 @@ trait ImportOperation
         $bottomRows    = [];
         $sheets        = [];
         $topRowsFilled = $bottomRowsFilled = false;
+        $totalColumns  = 0;
 
         $importBatch = ImportBatch::findOrFail($importBatchId);
 
-        if (request()->get('sheet')) {
-            $importBatch->settings = [
-                'sheet'         => request()->get('sheet'),
-                'header'        => request()->get('header'),
-                'top_offset'    => request()->get('top_offset'),
-                'bottom_offset' => request()->get('bottom_offset'),
-                'limit'         => request()->get('limit'),
-                'total'         => request()->get('total'),
-            ];
-
-            $importBatch->save();
-        }
+        $settings = [
+            'sheet'         => request()->get('sheet') ?? 1,
+            'header'        => request()->get('header') ?? $importBatch->settings['header'],
+            'top_offset'    => request()->get('top_offset') ?? 0,
+            'bottom_offset' => request()->get('bottom_offset') ?? 0,
+            'limit'         => request()->get('limit') ?? config('fournodes.import-operation.preview_row_limit'),
+            'total'         => request()->get('total') ?? 0,
+        ];
 
         $this->initiateFileReader($importBatch->path);
 
         foreach ($this->reader->getSheetIterator() as $sheetIndex => $sheet) {
             $sheets[$sheetIndex] = $sheet->getName();
 
-            if ($sheetIndex == $importBatch->settings['sheet']) {
+            if ($sheetIndex == $settings['sheet']) {
                 foreach ($sheet->getRowIterator() as $rowIndex => $row) {
+                    $cells = $row->toArray();
+
+                    // Store the maximum number of column in any row
+                    if (count($cells) > $totalColumns) {
+                        $totalColumns = count($cells);
+                    }
+
                     if ($topRowsFilled) {
-                        $bottomRows[$rowIndex] = $row->toArray();
+                        $bottomRows[$rowIndex] = $cells;
                         if ($bottomRowsFilled) {
                             unset($bottomRows[array_key_first($bottomRows)]);
                         }
                     } else {
-                        $topRows[$rowIndex] = $row->toArray();
+                        $topRows[$rowIndex] = $cells;
                     }
 
-                    if (!$topRowsFilled && count($topRows) == $importBatch->settings['limit']) {
+                    if (!$topRowsFilled && count($topRows) == $settings['limit']) {
                         $topRowsFilled = true;
                     }
-                    if (!$bottomRowsFilled && count($bottomRows) == $importBatch->settings['limit']) {
+                    if (!$bottomRowsFilled && count($bottomRows) == $settings['limit']) {
                         $bottomRowsFilled = true;
                     }
+
+                    $settings['total']++;
                 }
             }
         }
+
+        $importBatch->settings = $settings;
+        $importBatch->save();
 
         $topRows    = $this->convertDateTimeInRowsToValue($topRows);
         $bottomRows = $this->convertDateTimeInRowsToValue($bottomRows);
@@ -199,14 +203,12 @@ trait ImportOperation
             'sheets'       => $sheets,
             'topRows'      => $topRows,
             'bottomRows'   => $bottomRows,
-            'totalRows'    => $sheet->getRowIterator()->key(),
-            'totalColumns' => count(current($topRows)),
+            'totalColumns' => $totalColumns,
             'mappings'     => ImportMapping::whereModelType($this->crud->getModel()->getMorphClass())->get(),
             'fields'       => $this->getFields(),
         ];
 
         $this->reader->close();
-
         // load the view from /resources/views/vendor/fournodes/import-operation/ if it exists, otherwise load the one in the package
         return view($this->crud->get('import.parse.view') ?? 'fournodes.import-operation::import_parse', $this->data);
     }

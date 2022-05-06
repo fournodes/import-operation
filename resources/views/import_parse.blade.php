@@ -15,6 +15,7 @@
                 <form class="form-horizontal" method="POST" action="{{ url($crud->route . '/import/process') }}" onsubmit="return checkIfMappingIsSelected()">
                     {{ csrf_field() }}
                     <input type="hidden" name="import_batch_id" value="{{ $importBatch->id }}" />
+                    <input type="hidden" name="total_column" value="{{ $importBatch->settings['total_column'] }}" />
                     <input type="hidden" name="total" value="{{ $importBatch->settings['total'] }}" />
                     <div class="row">
                         <div class="col-md-12 mb-3">
@@ -103,7 +104,7 @@
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    @for ($i = 1; $i <= $totalColumns; $i++)
+                                    @for ($i = 1; $i <= $importBatch->settings['total_column']; $i++)
                                         <th>
                                             <select data-column="{{ $i+1 }}" name="mapping[]" class="form-control" tabindex="{{ $i }}">
                                                 <option value=""></option>
@@ -121,19 +122,19 @@
                                 @foreach ($topRows as $topRowNumber => $topRow)
                                     <tr class="top_rows">
                                         <td>{{ $topRowNumber }}</td>
-                                        @for ($i = 0; $i < $totalColumns; $i++)
+                                        @for ($i = 0; $i < $importBatch->settings['total_column']; $i++)
                                             <td class="text-truncate">{{ $topRow[$i] ?? ''}}</td>
                                         @endfor
                                     </tr>
                                 @endforeach
                                 @if ($bottomRows)
                                     <tr>
-                                        <td class="text-center" colspan="{{ $totalColumns + 1 }}">.....</td>
+                                        <td class="text-center" colspan="{{ $importBatch->settings['total_column'] + 1 }}">.....</td>
                                     </tr>
                                     @foreach ($bottomRows as $bottomRowNumber => $bottomRow)
                                         <tr class="bottom_rows">
                                             <td>{{ $bottomRowNumber }}</td>
-                                            @for ($i = 0; $i < $totalColumns; $i++)
+                                            @for ($i = 0; $i < $importBatch->settings['total_column']; $i++)
                                                 <td class="text-truncate">{{ $bottomRow[$i] ?? ''}}</td>
                                             @endfor
                                         </tr>

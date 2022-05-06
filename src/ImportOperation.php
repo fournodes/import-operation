@@ -153,6 +153,7 @@ trait ImportOperation
             'top_offset'    => request()->get('top_offset') ?? 0,
             'bottom_offset' => request()->get('bottom_offset') ?? 0,
             'limit'         => request()->get('limit') ?? config('fournodes.import-operation.preview_row_limit'),
+            'total_column'  => request()->get('total_column') ?? 0,
             'total'         => request()->get('total') ?? 0,
         ];
 
@@ -166,8 +167,8 @@ trait ImportOperation
                     $cells = $row->toArray();
 
                     // Store the maximum number of column in any row
-                    if (count($cells) > $totalColumns) {
-                        $totalColumns = count($cells);
+                    if (count($cells) > $settings['total_column']) {
+                        $settings['total_column'] = count($cells);
                     }
 
                     if ($topRowsFilled) {
@@ -203,7 +204,6 @@ trait ImportOperation
             'sheets'       => $sheets,
             'topRows'      => $topRows,
             'bottomRows'   => $bottomRows,
-            'totalColumns' => $totalColumns,
             'mappings'     => ImportMapping::whereModelType($this->crud->getModel()->getMorphClass())->get(),
             'fields'       => $this->getFields(),
         ];
@@ -252,6 +252,7 @@ trait ImportOperation
                 'top_offset'    => $request->top_offset,
                 'bottom_offset' => $request->bottom_offset,
                 'limit'         => $request->limit,
+                'total_column'  => $request->total_column,
                 'total'         => $request->total,
             ];
 
@@ -349,8 +350,8 @@ trait ImportOperation
         foreach ($this->reader->getSheetIterator() as $sheetIndex => $sheet) {
             if ($sheetIndex == $importBatch->settings['sheet']) {
                 foreach ($sheet->getRowIterator() as $rowIndex => $row) {
-                    $cells     = [];
-                    $mappedRow = [];
+                    $currentRow     = [];
+                    $mappedRow      = [];
 
                     if ($rowIndex > $rowLimit) {
                         break;
@@ -360,7 +361,14 @@ trait ImportOperation
                         continue;
                     }
 
-                    foreach ($row->toArray() as $cellIndex => $cell) {
+                    $cells = $row->toArray();
+
+                    // make sure all rows have equal number of columns
+                    if (count($cells) < $importBatch->settings['total_column']) {
+                        $cells = array_pad($cells, $importBatch->settings['total_column'], null);
+                    }
+
+                    foreach ($cells as $cellIndex => $cell) {
                         $cellValue = $cell instanceof DateTime
                         ? $cell->format('Y-m-d')
                         : $cell;
@@ -369,7 +377,7 @@ trait ImportOperation
                             $mappedRow[$importMappingData['mapping'][$cellIndex]] = $cellValue;
                         }
 
-                        $cells[] = $cellValue;
+                        $currentRow[] = $cellValue;
                     }
 
                     // Override default fields
@@ -384,7 +392,7 @@ trait ImportOperation
                     if ($validator->fails()) {
                         $errorRowCount++;
                         $errorMessages[$rowIndex] = $validator->errors()->toArray();
-                        $errorRows[$rowIndex]     = $cells;
+                        $errorRows[$rowIndex]     = $currentRow;
                     }
 
                     // break loop if row count exceeds error rows limit
@@ -415,7 +423,7 @@ trait ImportOperation
                         // Mapping each row to seleted mapping
                         $row = $row->toArray();
                         foreach ($mappingLookup as $mappingName => $index) {
-                            $importData[$rowIndex][$mappingName] = $row[$index];
+                            $importData[$rowIndex][$mappingName] = isset($row[$index]) ? $row[$index] : null;
                         }
 
                         // Adding default fields
@@ -437,6 +445,8 @@ trait ImportOperation
                 // TODO: Add logic to handle what happens when some records are not imported
                 $insertCount += $this->crud->model->insertOrIgnore($importData);
             }
+
+            unlink(storage_path('app/' . $importBatch->path));
 
             Alert::success(trans('fournodes.import-operation::import-operation.import_success', ['count' => $insertCount]))->flash();
 

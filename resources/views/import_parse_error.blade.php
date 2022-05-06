@@ -36,6 +36,7 @@
                                 </tr>
                             </thead>
                             <tbody>
+                                @php $tabIndex = 1; @endphp
                                 @foreach ($errorRows as $rowIndex => $errorRow)
                                     @if (isset($errorMessages[$rowIndex]))
                                         <tr>                                            
@@ -43,7 +44,7 @@
                                             @foreach ($errorRow as $columnIndex => $columnValue)
                                                 <td class="limit-width text-truncate align-middle {{ $selectedMapping['mapping'][$columnIndex] ? '' : 'd-none' }}">
                                                     @if (isset($errorMessages[$rowIndex][$selectedMapping['mapping'][$columnIndex]]))
-                                                        <input type="text" name="error_rows[{{ $rowIndex }}][{{ $columnIndex }}]" value="{{ $columnValue }}" class="form-control is-invalid" />
+                                                        <input type="text" name="error_rows[{{ $rowIndex }}][{{ $columnIndex }}]" value="{{ $columnValue }}" class="form-control is-invalid" tabindex="{{ $tabIndex++ }}"/>
                                                         <div class="invalid-feedback">
                                                             @foreach ($errorMessages[$rowIndex][$selectedMapping['mapping'][$columnIndex]] as $error)
                                                                 {{ $error }}

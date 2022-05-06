@@ -18,17 +18,17 @@
                     <input type="hidden" name="total" value="{{ $importBatch->settings['total'] }}" />
                     <div class="row">
                         <div class="col-md-12 mb-3">
-                            <div class="input-group mapping-group d-none">
+                            <div class="input-group mapping-group {{ $mappings->count() ? 'd-none' : '' }}">
                                 <div class="input-group-prepend">
                                     <span class="input-group-text">New Mapping</span>
                                 </div>
                                 <input type="text" name="mapping_name" class="form-control" placeholder="Enter Mapping Name">
                                 <div class="input-group-append">
-                                    <button type="button" class="btn btn-default toggle-mapping-group"><i class="la la-times"></i></button>
+                                    <button type="button" class="btn btn-default toggle-mapping-group {{ $mappings->count() ? '' : 'd-none' }}"><i class="la la-times"></i></button>
                                     <button type="button" class="btn btn-primary" data-toggle="collapse" href="#settings" role="button" aria-expanded="false" aria-controls="settings"><i class="la la-cog"></i></button>
                                 </div>
                             </div>
-                            <div class="input-group mapping-group">
+                            <div class="input-group mapping-group {{ $mappings->count() ? '' : 'd-none' }}">
                                 <select name="mapping_id" class="form-control">
                                     <option value="" selected disabled>Select Mapping</option>
                                     @foreach ($mappings as $mapping)

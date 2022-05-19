@@ -99,8 +99,17 @@ trait ImportOperation
     {
         $this->crud->hasAccessOrFail('import');
 
-        // Get all the fields that were posted
-        $fields = $request->all();
+        // Store all form fields that were posted
+        $fields = [];
+        foreach ($this->getFields(true) as $field) {
+            // If field type is upload extract fle
+            if($field['type'] == 'upload')
+                $fields[$field['name']] = $request->file('file');
+            // If field is regular input then only add that if there is a value
+            // An empty defaultable field indicates user wants to map the column later
+            else if($request->get($field['name']))
+                $fields[$field['name']] = $request->get($field['name']);
+        }     
 
         // Define validation rules for checking data
         $validationRules = array_merge(
@@ -121,7 +130,7 @@ trait ImportOperation
         }
 
         $importBatch = ImportBatch::create([
-            'defaults'  => $this->crud->getStrippedSaveRequest(),
+            'defaults'  => array_intersect_key($this->crud->getStrippedSaveRequest(), $fields),
             'path'      => $request->file('file')->storeAs('import', Str::uuid()->toString() . '.' . $request->file('file')->getClientOriginalExtension()),
             'settings'  => [
                 'header' => $request->get('file_contains_headers'),
@@ -205,7 +214,7 @@ trait ImportOperation
             'topRows'      => $topRows,
             'bottomRows'   => $bottomRows,
             'mappings'     => ImportMapping::whereModelType($this->crud->getModel()->getMorphClass())->get(),
-            'fields'       => $this->getFields(),
+            'fields'       => $this->getFields(false, array_keys($importBatch->defaults)),
         ];
 
         $this->reader->close();
@@ -461,7 +470,7 @@ trait ImportOperation
                 'errorMessages'   => $errorMessages,
                 'moreErrors'      => $errorRowCount >= $errorRowLimit,
                 'selectedMapping' => $importMappingData,
-                'mappingLabels'   => $this->getFields(),
+                'mappingLabels'   => $this->getFields(false, array_keys($importBatch->defaults)),
             ];
 
             Alert::error(trans('fournodes.import-operation::import-operation.import_error', ['count' => $errorRowCount]));
@@ -509,12 +518,12 @@ trait ImportOperation
      *
      * @return array
      */
-    private function getFields($includeDefaultFields = false)
+    private function getFields($defaultFieldsOnly = false, $exceptFields = [])
     {
         $allFields = collect($this->crud->fields());
 
-        // When includeDefaultFields is true, this will return all file picker and checkbox for header + importable fields
-        if ($includeDefaultFields) {
+        // When defaultFieldsOnly is true, this will return file picker, checkbox for header and importable fields
+        if ($defaultFieldsOnly) {
             // These fields always show on import step
             $importFields = collect([
                 'file' => [
@@ -536,7 +545,7 @@ trait ImportOperation
                 $allFields->filter(fn ($field) => isset($field['import_default']) && $field['import_default'] == true)
             );
         } else {
-            $fields = $allFields->filter(fn ($field) => !isset($field['import_default']));
+            $fields = $allFields->except($exceptFields);
         }
 
         return $fields->toArray();

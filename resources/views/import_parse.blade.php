@@ -266,7 +266,7 @@
         });
         
         $('select[name="bottom_offset"]').on('change', function() {
-            const bottomOffset = Number.parseInt($('select[name="bottom_offset"]').val());
+            const bottomOffset = Number.parseInt($(this).val());
 
             $('table tbody tr.bottom_rows').show();
             
@@ -279,7 +279,7 @@
         $('select[name="top_offset"], select[name="bottom_offset"], select[name="mapping[]"]').on('change', function() {
             const total = Number.parseInt($('input[name="total"]').val());
             const topOffset = Number.parseInt($('select[name="top_offset"]').val());
-            const bottomOffset = Number.parseInt($('select[name="bottom_offset"]').val());
+            const bottomOffset = Number.parseInt($('select[name="bottom_offset"]').val() || 0);
             const header = Number.parseInt($('select[name="header"]').val());
             const rowsToBeInserted = total - topOffset - bottomOffset - header;
 
